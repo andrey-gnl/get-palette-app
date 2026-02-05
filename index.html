@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport="width=device-width, initial-scale=1.0">
+    <title>Palette Screen — Color Palette Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+            background: #F5F5F7;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .phone-frame {
+            width: 390px;
+            height: 844px;
+            background: #FFFFFF;
+            border-radius: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            height: 44px;
+            background: #FFFFFF;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 24px;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .status-time {
+            color: #000000;
+        }
+
+        .status-icons {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .status-icon {
+            width: 18px;
+            height: 12px;
+            background: #000000;
+            border-radius: 2px;
+        }
+
+        /* App Bar */
+        .app-bar {
+            height: 56px;
+            background: #FFFFFF;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            border-bottom: 1px solid #E5E5E7;
+        }
+
+        .app-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-button {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .back-button:hover {
+            background: #F5F5F7;
+        }
+
+        .back-icon {
+            width: 20px;
+            height: 20px;
+            border-left: 2px solid #000000;
+            border-bottom: 2px solid #000000;
+            transform: rotate(45deg);
+        }
+
+        .app-title {
+            font-size: 17px;
+            font-weight: 600;
+            color: #000000;
+            letter-spacing: -0.4px;
+        }
+
+        .app-bar-right {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-button {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .icon-button:hover {
+            background: #F5F5F7;
+        }
+
+        .icon-share, .icon-save {
+            width: 18px;
+            height: 18px;
+            background: #000000;
+            mask-size: contain;
+        }
+
+        /* Content */
+        .content {
+            height: calc(844px - 44px - 56px - 34px);
+            overflow-y: auto;
+            padding: 20px 16px 100px;
+        }
+
+        /* Photo Preview */
+        .photo-section {
+            margin-bottom: 24px;
+        }
+
+        .photo-container {
+            width: 100%;
+            height: 200px;
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .photo-preview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .photo-overlay {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .photo-action {
+            padding: 8px 14px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #000000;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .photo-action:hover {
+            background: #FFFFFF;
+            transform: scale(1.05);
+        }
+
+        /* Palette Section */
+        .palette-section {
+            margin-bottom: 24px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #000000;
+            letter-spacing: -0.5px;
+        }
+
+        .regenerate-button {
+            padding: 6px 12px;
+            background: #F5F5F7;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #000000;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .regenerate-button:hover {
+            background: #E8E8EA;
+        }
+
+        .regenerate-icon {
+            width: 14px;
+            height: 14px;
+            border: 2px solid #000000;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: rotate 1s linear infinite;
+            animation-play-state: paused;
+        }
+
+        .regenerate-button:active .regenerate-icon {
+            animation-play-state: running;
+        }
+
+        @keyframes rotate {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Color Swatches */
+        .color-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .color-swatch {
+            background: #FFFFFF;
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid #E5E5E7;
+        }
+
+        .color-swatch:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .color-preview {
+            width: 56px;
+            height: 56px;
+            border-radius: 8px;
+            flex-shrink: 0;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        .color-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .color-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: #000000;
+            letter-spacing: -0.3px;
+        }
+
+        .color-hex {
+            font-size: 13px;
+            font-weight: 400;
+            color: #86868B;
+            font-family: 'SF Mono', 'Menlo', monospace;
+        }
+
+        .copy-icon {
+            width: 20px;
+            height: 20px;
+            background: #F5F5F7;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .copy-icon::before,
+        .copy-icon::after {
+            content: '';
+            position: absolute;
+            width: 10px;
+            height: 12px;
+            border: 1.5px solid #86868B;
+            border-radius: 2px;
+        }
+
+        .copy-icon::before {
+            top: 3px;
+            left: 3px;
+        }
+
+        .copy-icon::after {
+            top: 5px;
+            left: 5px;
+            background: #F5F5F7;
+        }
+
+        /* Quick Actions */
+        .quick-actions {
+            margin-bottom: 24px;
+        }
+
+        .actions-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .action-card {
+            background: #FFFFFF;
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid #E5E5E7;
+        }
+
+        .action-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+        }
+
+        .action-icon-wrapper {
+            width: 44px;
+            height: 44px;
+            background: #F5F5F7;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .action-icon {
+            width: 22px;
+            height: 22px;
+            background: #000000;
+        }
+
+        .action-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #000000;
+            text-align: center;
+        }
+
+        /* Primary CTA */
+        .cta-container {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 390px;
+            padding: 16px;
+            background: linear-gradient(to top, #FFFFFF 90%, rgba(255,255,255,0));
+        }
+
+        .primary-button {
+            width: 100%;
+            height: 52px;
+            background: #000000;
+            border-radius: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            font-weight: 600;
+            color: #FFFFFF;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: -0.4px;
+        }
+
+        .primary-button:hover {
+            background: #1C1C1E;
+            transform: scale(1.02);
+        }
+
+        .primary-button:active {
+            transform: scale(0.98);
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #FFFFFF;
+            padding: 12px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+
+        /* Home Indicator */
+        .home-indicator {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 134px;
+            height: 5px;
+            background: #000000;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-frame">
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-time">9:41</div>
+            <div class="status-icons">
+                <div class="status-icon"></div>
+                <div class="status-icon"></div>
+                <div class="status-icon"></div>
+            </div>
+        </div>
+
+        <!-- App Bar -->
+        <div class="app-bar">
+            <div class="app-bar-left">
+                <div class="back-button">
+                    <div class="back-icon"></div>
+                </div>
+                <div class="app-title">Color Palette</div>
+            </div>
+            <div class="app-bar-right">
+                <div class="icon-button">
+                    <div class="icon-share"></div>
+                </div>
+                <div class="icon-button">
+                    <div class="icon-save"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Photo Preview -->
+            <div class="photo-section">
+                <div class="photo-container">
+                    <div class="photo-preview" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);"></div>
+                    <div class="photo-overlay">
+                        <div class="photo-action">Retake</div>
+                        <div class="photo-action">Edit</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Color Palette -->
+            <div class="palette-section">
+                <div class="section-header">
+                    <div class="section-title">Palette</div>
+                    <div class="regenerate-button">
+                        <div class="regenerate-icon"></div>
+                        Regenerate
+                    </div>
+                </div>
+
+                <div class="color-grid">
+                    <div class="color-swatch" onclick="copyColor('#667EEA')">
+                        <div class="color-preview" style="background: #667EEA;"></div>
+                        <div class="color-info">
+                            <div class="color-name">Primary Blue</div>
+                            <div class="color-hex">#667EEA</div>
+                        </div>
+                        <div class="copy-icon"></div>
+                    </div>
+
+                    <div class="color-swatch" onclick="copyColor('#764BA2')">
+                        <div class="color-preview" style="background: #764BA2;"></div>
+                        <div class="color-info">
+                            <div class="color-name">Deep Purple</div>
+                            <div class="color-hex">#764BA2</div>
+                        </div>
+                        <div class="copy-icon"></div>
+                    </div>
+
+                    <div class="color-swatch" onclick="copyColor('#F093FB')">
+                        <div class="color-preview" style="background: #F093FB;"></div>
+                        <div class="color-info">
+                            <div class="color-name">Soft Pink</div>
+                            <div class="color-hex">#F093FB</div>
+                        </div>
+                        <div class="copy-icon"></div>
+                    </div>
+
+                    <div class="color-swatch" onclick="copyColor('#4FACFE')">
+                        <div class="color-preview" style="background: #4FACFE;"></div>
+                        <div class="color-info">
+                            <div class="color-name">Sky Blue</div>
+                            <div class="color-hex">#4FACFE</div>
+                        </div>
+                        <div class="copy-icon"></div>
+                    </div>
+
+                    <div class="color-swatch" onclick="copyColor('#43E97B')">
+                        <div class="color-preview" style="background: #43E97B;"></div>
+                        <div class="color-info">
+                            <div class="color-name">Fresh Green</div>
+                            <div class="color-hex">#43E97B</div>
+                        </div>
+                        <div class="copy-icon"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="quick-actions">
+                <div class="section-header">
+                    <div class="section-title">Actions</div>
+                </div>
+
+                <div class="actions-grid">
+                    <div class="action-card" onclick="copyAllColors()">
+                        <div class="action-icon-wrapper">
+                            <div class="action-icon"></div>
+                        </div>
+                        <div class="action-label">Copy All</div>
+                    </div>
+
+                    <div class="action-card" onclick="exportPalette()">
+                        <div class="action-icon-wrapper">
+                            <div class="action-icon"></div>
+                        </div>
+                        <div class="action-label">Export Palette</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Primary CTA -->
+        <div class="cta-container">
+            <div class="primary-button" onclick="savePalette()">
+                Save Palette
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div class="toast" id="toast">Color copied!</div>
+
+        <!-- Home Indicator -->
+        <div class="home-indicator"></div>
+    </div>
+
+    <script>
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        function copyColor(hex) {
+            navigator.clipboard.writeText(hex).then(() => {
+                showToast(`${hex} copied!`);
+            });
+        }
+
+        function copyAllColors() {
+            const colors = ['#667EEA', '#764BA2', '#F093FB', '#4FACFE', '#43E97B'];
+            navigator.clipboard.writeText(colors.join('\n')).then(() => {
+                showToast('All colors copied!');
+            });
+        }
+
+        function exportPalette() {
+            showToast('Export options opened');
+        }
+
+        function savePalette() {
+            showToast('Palette saved!');
+        }
+    </script>
+</body>
+</html>
