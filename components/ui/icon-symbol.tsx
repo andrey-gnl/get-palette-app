@@ -18,6 +18,7 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'camera.fill': 'photo-camera',
   'camera.rotate': 'flip-camera-android',
+  'info.circle': 'info-outline',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
 } as IconMapping;

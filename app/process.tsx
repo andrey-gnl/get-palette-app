@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ThemedText } from '@/components/themed-text'
 import { ThemedView } from '@/components/themed-view'
+import { IconSymbol } from '@/components/ui/icon-symbol'
 
 const TARGET_WIDTH = 144
 const SALIENCE_WIDTH = 256
@@ -61,6 +62,8 @@ type PaletteResult = {
   colors: PaletteSwatch[]
 }
 
+type MetricKey = 'tonalRange' | 'hueSpread' | 'coverageBalance'
+
 export default function ProcessScreen() {
   const { uri } = useLocalSearchParams<{ uri?: string | string[] }>()
   const router = useRouter()
@@ -77,6 +80,7 @@ export default function ProcessScreen() {
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [copiedColor, setCopiedColor] = useState<string | null>(null)
+  const [activeMetric, setActiveMetric] = useState<MetricKey | null>(null)
   const copiedTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -123,6 +127,34 @@ export default function ProcessScreen() {
   const sceneMetrics = useMemo(() => {
     return getSceneMetrics(palette.colors)
   }, [palette.colors])
+  const metricInfo = useMemo(() => {
+    if (!activeMetric) {
+      return null
+    }
+
+    switch (activeMetric) {
+      case 'tonalRange':
+        return {
+          title: 'Tonal range',
+          description:
+            'Difference between maximum and minimum lightness in the palette. L is a 0–100 lightness scale.',
+        }
+      case 'hueSpread':
+        return {
+          title: 'Hue spread',
+          description:
+            'Smallest circular hue range that contains the palette hues, weighted by coverage. Degrees are on a 0–360 hue circle.',
+        }
+      case 'coverageBalance':
+        return {
+          title: 'Coverage balance',
+          description:
+            'Primary coverage divided by the sum of other coverages. Displayed as a ratio (×).',
+        }
+      default:
+        return null
+    }
+  }, [activeMetric])
   const distributionGroups = useMemo(() => {
     return groupSwatches(distributionSwatches)
   }, [distributionSwatches])
@@ -254,25 +286,49 @@ export default function ProcessScreen() {
         {primarySwatch ? (
           <View style={styles.metricsBlock}>
             <View style={styles.metricsRow}>
-              <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
-                Tonal range
-              </ThemedText>
+              <View style={styles.metricsLabelRow}>
+                <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
+                  Tonal range
+                </ThemedText>
+                <Pressable
+                  style={styles.infoButton}
+                  onPress={() => setActiveMetric('tonalRange')}
+                >
+                  <IconSymbol name="info.circle" size={16} color={UI_COLORS.muted} />
+                </Pressable>
+              </View>
               <ThemedText lightColor={UI_COLORS.text} darkColor={UI_COLORS.text}>
                 {sceneMetrics.tonalRange}L
               </ThemedText>
             </View>
             <View style={styles.metricsRow}>
-              <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
-                Hue spread
-              </ThemedText>
+              <View style={styles.metricsLabelRow}>
+                <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
+                  Hue spread
+                </ThemedText>
+                <Pressable
+                  style={styles.infoButton}
+                  onPress={() => setActiveMetric('hueSpread')}
+                >
+                  <IconSymbol name="info.circle" size={16} color={UI_COLORS.muted} />
+                </Pressable>
+              </View>
               <ThemedText lightColor={UI_COLORS.text} darkColor={UI_COLORS.text}>
                 {sceneMetrics.hueSpread}°
               </ThemedText>
             </View>
             <View style={styles.metricsRow}>
-              <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
-                Coverage balance
-              </ThemedText>
+              <View style={styles.metricsLabelRow}>
+                <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
+                  Coverage balance
+                </ThemedText>
+                <Pressable
+                  style={styles.infoButton}
+                  onPress={() => setActiveMetric('coverageBalance')}
+                >
+                  <IconSymbol name="info.circle" size={16} color={UI_COLORS.muted} />
+                </Pressable>
+              </View>
               <ThemedText lightColor={UI_COLORS.text} darkColor={UI_COLORS.text}>
                 {sceneMetrics.dominanceRatio}×
               </ThemedText>
@@ -364,6 +420,33 @@ export default function ProcessScreen() {
           <Image source={{ uri: photoUri }} style={styles.imagePreview} />
         </View>
       </ScrollView>
+      {metricInfo ? (
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setActiveMetric(null)}
+        >
+          <Pressable style={styles.modalCard} onPress={() => null}>
+            <ThemedText
+              type="defaultSemiBold"
+              lightColor={UI_COLORS.text}
+              darkColor={UI_COLORS.text}
+            >
+              {metricInfo.title}
+            </ThemedText>
+            <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
+              {metricInfo.description}
+            </ThemedText>
+            <Pressable
+              style={styles.modalButton}
+              onPress={() => setActiveMetric(null)}
+            >
+              <ThemedText lightColor={UI_COLORS.text} darkColor={UI_COLORS.text}>
+                Close
+              </ThemedText>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      ) : null}
     </ThemedView>
   )
 }
@@ -1262,10 +1345,44 @@ const styles = StyleSheet.create({
     backgroundColor: UI_COLORS.card,
     gap: 10,
   },
+  metricsLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  infoButton: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   metricsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: UI_COLORS.border,
+    backgroundColor: UI_COLORS.background,
+    padding: 20,
+    gap: 12,
+  },
+  modalButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: UI_COLORS.border,
+    backgroundColor: UI_COLORS.card,
   },
   groupBlock: {
     gap: 12,
