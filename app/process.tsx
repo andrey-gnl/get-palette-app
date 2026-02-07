@@ -3,6 +3,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { Image } from 'expo-image'
 import * as ImageManipulator from 'expo-image-manipulator'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import * as jpeg from 'jpeg-js'
 import UPNG from 'upng-js'
@@ -35,9 +36,15 @@ const SEED_DISTANCE = 60
 const KM_ITERATIONS = 6
 const VIVID_SATURATION_MIN = 40
 const SALIENCE_SATURATION_MIN = 10
-const SALIENCE_CONTRAST_MIN = 0.05
-const SALIENCE_SAMPLE_LIMIT = 2200
+const SALIENCE_CONTRAST_MIN = 0.03
+const SALIENCE_SAMPLE_LIMIT = 4000
 const DEDUPE_DISTANCE = 45
+const DEDUPE_HUE_DISTANCE = 18
+const SALIENCE_HUE_SEPARATION = 60
+const WARM_HUE_MIN = 20
+const WARM_HUE_MAX = 70
+const WARM_FORCE_HUE_DISTANCE = 40
+const WARM_BIN_SIZE = 10
 
 const UI_COLORS = {
   background: '#0d0f10',
@@ -60,9 +67,18 @@ type PaletteSwatch = {
 
 type PaletteResult = {
   colors: PaletteSwatch[]
+  luminanceContrast: number
+  colorContrast: number
 }
 
-type MetricKey = 'tonalRange' | 'hueSpread' | 'coverageBalance'
+type MetricKey =
+  | 'tonalRange'
+  | 'hueSpread'
+  | 'coverageBalance'
+  | 'luminanceContrast'
+  | 'colorContrast'
+  | 'temperature'
+  | 'tint'
 
 export default function ProcessScreen() {
   const { uri } = useLocalSearchParams<{ uri?: string | string[] }>()
@@ -76,7 +92,11 @@ export default function ProcessScreen() {
     return uri
   }, [uri])
 
-  const [palette, setPalette] = useState<PaletteResult>({ colors: [] })
+  const [palette, setPalette] = useState<PaletteResult>({
+    colors: [],
+    luminanceContrast: 0,
+    colorContrast: 0,
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [copiedColor, setCopiedColor] = useState<string | null>(null)
@@ -122,8 +142,7 @@ export default function ProcessScreen() {
     }
   }, [photoUri])
 
-  const primarySwatch = palette.colors[0]
-  const distributionSwatches = palette.colors.slice(1)
+  const distributionSwatches = palette.colors
   const sceneMetrics = useMemo(() => {
     return getSceneMetrics(palette.colors)
   }, [palette.colors])
@@ -150,6 +169,30 @@ export default function ProcessScreen() {
           title: 'Coverage balance',
           description:
             'Primary coverage divided by the sum of other coverages. Displayed as a ratio (×).',
+        }
+      case 'luminanceContrast':
+        return {
+          title: 'Luminance contrast',
+          description:
+            'Brightness spread across the image, scaled to 0–100.',
+        }
+      case 'colorContrast':
+        return {
+          title: 'Color contrast',
+          description:
+            'Hue variation across the image, scaled to 0–100.',
+        }
+      case 'temperature':
+        return {
+          title: 'Temperature',
+          description:
+            'Blue–yellow balance mapped to a Kelvin scale (2000–10000K).',
+        }
+      case 'tint':
+        return {
+          title: 'Tint',
+          description:
+            'Green–magenta balance mapped to a Lightroom-style scale (-150 to 150).',
         }
       default:
         return null
@@ -239,51 +282,9 @@ export default function ProcessScreen() {
           <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
             {errorMessage}
           </ThemedText>
-        ) : primarySwatch ? (
-          <View style={styles.section}>
-            <ThemedText
-              style={styles.sectionLabel}
-              lightColor={UI_COLORS.muted}
-              darkColor={UI_COLORS.muted}
-            >
-              Highest coverage
-            </ThemedText>
-            <Pressable
-              style={[styles.primarySwatch, { backgroundColor: primarySwatch.color }]}
-              onPress={() => handleCopy(primarySwatch.color)}
-            />
-            <View style={styles.primaryMeta}>
-              <Pressable onPress={() => handleCopy(primarySwatch.color)}>
-                <ThemedText
-                  type="defaultSemiBold"
-                  lightColor={UI_COLORS.text}
-                  darkColor={UI_COLORS.text}
-                >
-                  {primarySwatch.color.toUpperCase()}
-                </ThemedText>
-              </Pressable>
-              <View style={styles.primaryMetrics}>
-                <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
-                  Coverage {primarySwatch.percentage}%
-                </ThemedText>
-                <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
-                  Lightness {primarySwatch.lightness}%
-                </ThemedText>
-              </View>
-              {copiedColor === primarySwatch.color ? (
-                <ThemedText
-                  style={styles.copiedText}
-                  lightColor={UI_COLORS.muted}
-                  darkColor={UI_COLORS.muted}
-                >
-                  Copied
-                </ThemedText>
-              ) : null}
-            </View>
-          </View>
         ) : null}
 
-        {primarySwatch ? (
+        {palette.colors.length > 0 ? (
           <View style={styles.metricsBlock}>
             <View style={styles.metricsRow}>
               <View style={styles.metricsLabelRow}>
@@ -332,6 +333,118 @@ export default function ProcessScreen() {
               <ThemedText lightColor={UI_COLORS.text} darkColor={UI_COLORS.text}>
                 {sceneMetrics.dominanceRatio}×
               </ThemedText>
+            </View>
+            <View style={styles.metricsRow}>
+              <View style={styles.metricsLabelRow}>
+                <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
+                  Luminance contrast
+                </ThemedText>
+                <Pressable
+                  style={styles.infoButton}
+                  onPress={() => setActiveMetric('luminanceContrast')}
+                >
+                  <IconSymbol name="info.circle" size={16} color={UI_COLORS.muted} />
+                </Pressable>
+              </View>
+              <ThemedText lightColor={UI_COLORS.text} darkColor={UI_COLORS.text}>
+                {palette.luminanceContrast}
+              </ThemedText>
+            </View>
+            <View style={styles.metricsRow}>
+              <View style={styles.metricsLabelRow}>
+                <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
+                  Color contrast
+                </ThemedText>
+                <Pressable
+                  style={styles.infoButton}
+                  onPress={() => setActiveMetric('colorContrast')}
+                >
+                  <IconSymbol name="info.circle" size={16} color={UI_COLORS.muted} />
+                </Pressable>
+              </View>
+              <ThemedText lightColor={UI_COLORS.text} darkColor={UI_COLORS.text}>
+                {palette.colorContrast}
+              </ThemedText>
+            </View>
+            <View style={styles.metricsRow}>
+              <View style={styles.metricsLabelRow}>
+                <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
+                  Temperature
+                </ThemedText>
+                <Pressable
+                  style={styles.infoButton}
+                  onPress={() => setActiveMetric('temperature')}
+                >
+                  <IconSymbol name="info.circle" size={16} color={UI_COLORS.muted} />
+                </Pressable>
+              </View>
+              <ThemedText lightColor={UI_COLORS.text} darkColor={UI_COLORS.text}>
+                {sceneMetrics.temperatureKelvin}K
+              </ThemedText>
+            </View>
+            <View style={styles.metricsRow}>
+              <View style={styles.metricsLabelRow}>
+                <ThemedText lightColor={UI_COLORS.muted} darkColor={UI_COLORS.muted}>
+                  Tint
+                </ThemedText>
+                <Pressable
+                  style={styles.infoButton}
+                  onPress={() => setActiveMetric('tint')}
+                >
+                  <IconSymbol name="info.circle" size={16} color={UI_COLORS.muted} />
+                </Pressable>
+              </View>
+              <ThemedText lightColor={UI_COLORS.text} darkColor={UI_COLORS.text}>
+                {formatSigned(sceneMetrics.tintLR)}
+              </ThemedText>
+            </View>
+          </View>
+        ) : null}
+
+        {palette.colors.length > 0 ? (
+          <View style={styles.section}>
+            <ThemedText
+              style={styles.sectionLabel}
+              lightColor={UI_COLORS.muted}
+              darkColor={UI_COLORS.muted}
+            >
+              Palette
+            </ThemedText>
+            <View style={styles.paletteBar}>
+              {palette.colors.map((swatch) => (
+                <View
+                  key={`palette-bar-${swatch.color}`}
+                  style={[
+                    styles.paletteSegment,
+                    {
+                      backgroundColor: swatch.color,
+                      flex: Math.max(1, swatch.percentage),
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {palette.colors.length > 0 ? (
+          <View style={styles.gradientBlock}>
+            <ThemedText
+              style={styles.sectionLabel}
+              lightColor={UI_COLORS.muted}
+              darkColor={UI_COLORS.muted}
+            >
+              Gradient map
+            </ThemedText>
+            <View style={styles.gradientBar}>
+              <LinearGradient
+                colors={lightnessOrder.map(
+                  (swatch) => swatch.color
+                ) as [string, string, ...string[]]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.gradientOverlay}
+              />
             </View>
           </View>
         ) : null}
@@ -396,26 +509,6 @@ export default function ProcessScreen() {
           </View>
         ) : null}
 
-        {lightnessOrder.length > 1 ? (
-          <View style={styles.section}>
-            <ThemedText
-              style={styles.sectionLabel}
-              lightColor={UI_COLORS.muted}
-              darkColor={UI_COLORS.muted}
-            >
-              Lightness order
-            </ThemedText>
-            <View style={styles.lightnessRow}>
-              {lightnessOrder.map((swatch) => (
-                <View
-                  key={`lightness-${swatch.color}`}
-                  style={[styles.lightnessSwatch, { backgroundColor: swatch.color }]}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
-
         <View style={styles.imageRow}>
           <Image source={{ uri: photoUri }} style={styles.imagePreview} />
         </View>
@@ -473,7 +566,7 @@ async function getPaletteFromUri(uri: string): Promise<PaletteResult> {
   )
 
   if (!resized.base64) {
-    return { colors: [] }
+    return { colors: [], luminanceContrast: 0, colorContrast: 0 }
   }
 
   const decoded = jpeg.decode(toByteArray(resized.base64), {
@@ -481,7 +574,7 @@ async function getPaletteFromUri(uri: string): Promise<PaletteResult> {
   })
 
   if (!decoded?.data) {
-    return { colors: [] }
+    return { colors: [], luminanceContrast: 0, colorContrast: 0 }
   }
 
   let salienceDecoded: { data: Uint8Array; width: number; height: number } | null = null
@@ -502,7 +595,7 @@ async function getPaletteFromUri(uri: string): Promise<PaletteResult> {
     }
   }
 
-  const colors = extractPalette(
+  const palette = extractPalette(
     decoded.data,
     decoded.width,
     decoded.height,
@@ -511,7 +604,7 @@ async function getPaletteFromUri(uri: string): Promise<PaletteResult> {
     salienceDecoded?.height ?? decoded.height
   )
 
-  return { colors }
+  return palette
 }
 
 function extractPalette(
@@ -521,12 +614,12 @@ function extractPalette(
   salienceData: Uint8Array,
   salienceWidth: number,
   salienceHeight: number
-): PaletteSwatch[] {
+): PaletteResult {
   const samples = getSamples(data, width, height)
   const sampleCount = samples.length
 
   if (sampleCount === 0) {
-    return []
+    return { colors: [], luminanceContrast: 0, colorContrast: 0 }
   }
 
   const areaQuantized = getQuantizedStats(samples)
@@ -547,10 +640,19 @@ function extractPalette(
     initialCenters
   )
   const salienceScores = rankSalienceCenters(salienceSamples, salienceCenters)
+  const warmCandidate = getWarmCandidateFromSalienceData(
+    salienceData,
+    salienceWidth,
+    salienceHeight
+  )
+  const mergedSalienceScores = mergeWarmCandidate(
+    salienceScores,
+    warmCandidate
+  )
 
   const composedCenters = composeCenters(
     areaClusters.map((cluster) => cluster.center),
-    salienceScores,
+    mergedSalienceScores,
     MAX_COLORS
   )
 
@@ -587,8 +689,10 @@ function extractPalette(
   )
 
   const merged = mergeLowCoverageSwatches(swatches, sampleCount, protectedKeys)
+  const colors = normalizePercentages(merged)
+  const { luminanceContrast, colorContrast } = getContrastMetrics(samples)
 
-  return normalizePercentages(merged)
+  return { colors, luminanceContrast, colorContrast }
 }
 
 function normalizePercentages(swatches: PaletteSwatch[]): PaletteSwatch[] {
@@ -811,6 +915,34 @@ function getHueDistance(
   return Math.min(distance, 360 - distance)
 }
 
+function getHueFromCenter(center: { r: number; g: number; b: number }) {
+  return rgbToHsl(center.r, center.g, center.b).hue
+}
+
+function isDistinctCenter(
+  candidate: { r: number; g: number; b: number },
+  centers: { r: number; g: number; b: number }[]
+) {
+  for (const center of centers) {
+    const distance = Math.sqrt(getDistanceSquared(candidate, center))
+    if (distance > DEDUPE_DISTANCE) {
+      continue
+    }
+
+    const hueDistance = getHueDistance(
+      getHueFromCenter(candidate),
+      getHueFromCenter(center),
+      50,
+      50
+    )
+    if (hueDistance < DEDUPE_HUE_DISTANCE) {
+      return false
+    }
+  }
+
+  return true
+}
+
 function getSamples(data: Uint8Array, width: number, height: number) {
   const stride = Math.max(1, SAMPLE_STRIDE)
   const rowStride = width * 4
@@ -955,6 +1087,153 @@ function getSalienceCenters(
   return clusters.filter((cluster) => cluster.count > 0).map((cluster) => cluster.center)
 }
 
+function getWarmCandidateFromSalienceData(
+  data: Uint8Array,
+  width: number,
+  height: number
+) {
+  const stride = Math.max(1, SAMPLE_STRIDE)
+  const rowStride = width * 4
+  const sampleWidth = Math.ceil(width / stride)
+  const sampleHeight = Math.ceil(height / stride)
+  const luminance: number[] = []
+  const hueValues: number[] = []
+  const saturation: number[] = []
+  const samples: { r: number; g: number; b: number }[] = []
+
+  for (let y = 0; y < height; y += stride) {
+    const rowOffset = y * rowStride
+    for (let x = 0; x < width; x += stride) {
+      const index = rowOffset + x * 4
+      const r = data[index]
+      const g = data[index + 1]
+      const b = data[index + 2]
+      samples.push({ r, g, b })
+      luminance.push(0.2126 * r + 0.7152 * g + 0.0722 * b)
+      const hsl = rgbToHsl(r, g, b)
+      hueValues.push(hsl.hue)
+      saturation.push(hsl.saturation)
+    }
+  }
+
+  const bins = new Map<number, { score: number; count: number; sum: { r: number; g: number; b: number } }>()
+
+  for (let y = 0; y < sampleHeight; y += 1) {
+    for (let x = 0; x < sampleWidth; x += 1) {
+      const index = y * sampleWidth + x
+      const hue = hueValues[index]
+      if (!isWarmHue(hue)) {
+        continue
+      }
+
+      let contrastSum = 0
+      let neighbors = 0
+
+      if (x + 1 < sampleWidth) {
+        contrastSum += Math.abs(luminance[index] - luminance[index + 1])
+        neighbors += 1
+      }
+
+      if (y + 1 < sampleHeight) {
+        contrastSum += Math.abs(
+          luminance[index] - luminance[index + sampleWidth]
+        )
+        neighbors += 1
+      }
+
+      if (neighbors === 0) {
+        continue
+      }
+
+      const contrast = contrastSum / (neighbors * 255)
+      const lowSaturation = saturation[index] < SALIENCE_SATURATION_MIN
+      const lowContrast = contrast < SALIENCE_CONTRAST_MIN
+
+      if (lowSaturation && lowContrast) {
+        continue
+      }
+
+      const salience = (saturation[index] / 100) * contrast
+      const bin = Math.floor((hue - WARM_HUE_MIN) / WARM_BIN_SIZE)
+      const current = bins.get(bin) ?? {
+        score: 0,
+        count: 0,
+        sum: { r: 0, g: 0, b: 0 },
+      }
+      current.score += salience
+      current.count += 1
+      current.sum.r += samples[index].r
+      current.sum.g += samples[index].g
+      current.sum.b += samples[index].b
+      bins.set(bin, current)
+    }
+  }
+
+  let best: { center: { r: number; g: number; b: number }; score: number } | null = null
+
+  for (const entry of bins.values()) {
+    if (entry.count === 0) {
+      continue
+    }
+
+    const center = {
+      r: Math.round(entry.sum.r / entry.count),
+      g: Math.round(entry.sum.g / entry.count),
+      b: Math.round(entry.sum.b / entry.count),
+    }
+
+    if (!best || entry.score > best.score) {
+      best = { center, score: entry.score }
+    }
+  }
+
+  if (!best) {
+    return null
+  }
+
+  return {
+    center: best.center,
+    score: best.score,
+    isWarm: true,
+    forceWarm: true,
+  }
+}
+
+function mergeWarmCandidate(
+  salienceCenters: {
+    center: { r: number; g: number; b: number }
+    score: number
+    isWarm: boolean
+    forceWarm?: boolean
+  }[],
+  warmCandidate: {
+    center: { r: number; g: number; b: number }
+    score: number
+    isWarm: boolean
+    forceWarm?: boolean
+  } | null
+) {
+  if (!warmCandidate) {
+    return salienceCenters
+  }
+
+  const warmHue = getHueFromCenter(warmCandidate.center)
+  const hasSimilarWarm = salienceCenters.some((entry) => {
+    if (!entry.isWarm) {
+      return false
+    }
+
+    const entryHue = getHueFromCenter(entry.center)
+    return getHueDistance(entryHue, warmHue, 50, 50) < WARM_BIN_SIZE
+  })
+
+  if (hasSimilarWarm) {
+    return salienceCenters
+  }
+
+  return [warmCandidate, ...salienceCenters]
+}
+
 function rankSalienceCenters(
   samples: { sample: { r: number; g: number; b: number }; score: number }[],
   centers: { r: number; g: number; b: number }[]
@@ -981,17 +1260,32 @@ function rankSalienceCenters(
   }
 
   return centers
-    .map((center, index) => ({ center, score: scores[index] }))
+    .map((center, index) => ({
+      center,
+      score: scores[index],
+      isWarm: isWarmHue(getHueFromCenter(center)),
+      forceWarm: false,
+    }))
     .sort((a, b) => b.score - a.score)
 }
 
 function composeCenters(
   areaCenters: { r: number; g: number; b: number }[],
-  salienceCenters: { center: { r: number; g: number; b: number }; score: number }[],
+  salienceCenters: {
+    center: { r: number; g: number; b: number }
+    score: number
+    isWarm: boolean
+    forceWarm?: boolean
+  }[],
   maxColors: number
 ) {
   const centers: { r: number; g: number; b: number }[] = []
   const salienceRanks: Array<number | null> = []
+
+  const selectedSalience = selectSalienceByHueDiversity(
+    salienceCenters,
+    SALIENCE_SLOTS
+  )
 
   for (const center of areaCenters.slice(0, AREA_SLOTS)) {
     centers.push(center)
@@ -999,13 +1293,28 @@ function composeCenters(
   }
 
   let salienceRank = 0
-  for (const entry of salienceCenters) {
+  for (const entry of selectedSalience) {
     if (centers.length >= maxColors || salienceRank >= SALIENCE_SLOTS) {
       break
     }
 
-    if (!isFarFromCenters(entry.center, centers, DEDUPE_DISTANCE)) {
-      continue
+    if (!isDistinctCenter(entry.center, centers)) {
+      if (!entry.isWarm) {
+        continue
+      }
+
+      const entryHue = getHueFromCenter(entry.center)
+      const requiredDistance = entry.forceWarm
+        ? WARM_FORCE_HUE_DISTANCE
+        : DEDUPE_HUE_DISTANCE
+      const hasHueSeparation = centers.every((center) => {
+        const centerHue = getHueFromCenter(center)
+        return getHueDistance(centerHue, entryHue, 50, 50) >= requiredDistance
+      })
+
+      if (!hasHueSeparation) {
+        continue
+      }
     }
 
     centers.push(entry.center)
@@ -1014,6 +1323,81 @@ function composeCenters(
   }
 
   return { centers, salienceRanks }
+}
+
+function selectSalienceByHueDiversity(
+  salienceCenters: {
+    center: { r: number; g: number; b: number }
+    score: number
+    isWarm: boolean
+    forceWarm?: boolean
+  }[],
+  slotCount: number
+) {
+  if (salienceCenters.length === 0 || slotCount === 0) {
+    return []
+  }
+
+  const selected: {
+    center: { r: number; g: number; b: number }
+    score: number
+    isWarm: boolean
+    forceWarm?: boolean
+  }[] = []
+  const candidates = salienceCenters.slice(0, Math.max(12, slotCount))
+
+  const warmCandidate =
+    candidates.find((candidate) => candidate.forceWarm) ||
+    candidates.find((candidate) => candidate.isWarm)
+  if (warmCandidate) {
+    selected.push(warmCandidate)
+  }
+
+  if (candidates.length > 0 && selected.length < slotCount) {
+    if (!selected.includes(candidates[0])) {
+      selected.push(candidates[0])
+    }
+  }
+
+  while (selected.length < slotCount) {
+    let bestCandidate: (typeof selected)[number] | null = null
+    let bestDistance = -1
+
+    for (const candidate of candidates) {
+      if (selected.includes(candidate)) {
+        continue
+      }
+
+      const candidateHue = getHueFromCenter(candidate.center)
+      const minHueDistance = selected.reduce((minDistance, entry) => {
+        const entryHue = getHueFromCenter(entry.center)
+        const distance = getHueDistance(entryHue, candidateHue, 50, 50)
+        return Math.min(minDistance, distance)
+      }, Number.POSITIVE_INFINITY)
+
+      const score =
+        minHueDistance >= SALIENCE_HUE_SEPARATION
+          ? minHueDistance * 2 + candidate.score
+          : minHueDistance + candidate.score * 0.5
+
+      if (score > bestDistance) {
+        bestDistance = score
+        bestCandidate = candidate
+      }
+    }
+
+    if (!bestCandidate) {
+      break
+    }
+
+    selected.push(bestCandidate)
+  }
+
+  return selected
+}
+
+function isWarmHue(hue: number) {
+  return hue >= WARM_HUE_MIN && hue <= WARM_HUE_MAX
 }
 
 function assignSamplesToCenters(
@@ -1212,7 +1596,13 @@ function getDistanceSquared(
 
 function getSceneMetrics(swatches: PaletteSwatch[]) {
   if (swatches.length === 0) {
-    return { tonalRange: 0, hueSpread: 0, dominanceRatio: '0.0' }
+    return {
+      tonalRange: 0,
+      hueSpread: 0,
+      dominanceRatio: '0.0',
+      temperatureKelvin: 0,
+      tintLR: 0,
+    }
   }
 
   const lightnessValues = swatches.map((swatch) => swatch.lightness)
@@ -1229,7 +1619,79 @@ function getSceneMetrics(swatches: PaletteSwatch[]) {
   const otherCoverage = Math.max(1, totalCoverage - primaryCoverage)
   const dominanceRatio = (primaryCoverage / otherCoverage).toFixed(1)
 
-  return { tonalRange, hueSpread, dominanceRatio }
+  const weighted = swatches.reduce(
+    (accumulator, swatch) => {
+      const weight = swatch.percentage / 100
+      const rgb = hexToRgb(swatch.color)
+
+      return {
+        r: accumulator.r + rgb.r * weight,
+        g: accumulator.g + rgb.g * weight,
+        b: accumulator.b + rgb.b * weight,
+      }
+    },
+    { r: 0, g: 0, b: 0 }
+  )
+
+  const temperature = Math.round(((weighted.r - weighted.b) / 255) * 100)
+  const tint = Math.round(
+    ((weighted.g - (weighted.r + weighted.b) / 2) / 255) * 100
+  )
+
+  const temperatureKelvin = Math.round(
+    mapRange(clampValue(temperature, -100, 100), -100, 100, 2000, 10000)
+  )
+  const tintLR = Math.round(
+    mapRange(clampValue(tint, -100, 100), -100, 100, -150, 150)
+  )
+
+  return {
+    tonalRange,
+    hueSpread,
+    dominanceRatio,
+    temperatureKelvin,
+    tintLR,
+  }
+}
+
+function getContrastMetrics(samples: { r: number; g: number; b: number }[]) {
+  let mean = 0
+  let m2 = 0
+  let count = 0
+  let sumX = 0
+  let sumY = 0
+  let weightSum = 0
+
+  for (const sample of samples) {
+    const luminance =
+      0.2126 * sample.r + 0.7152 * sample.g + 0.0722 * sample.b
+    count += 1
+    const delta = luminance - mean
+    mean += delta / count
+    m2 += delta * (luminance - mean)
+
+    const hsl = rgbToHsl(sample.r, sample.g, sample.b)
+    const weight = hsl.saturation / 100
+    if (weight > 0) {
+      const angle = (hsl.hue * Math.PI) / 180
+      sumX += Math.cos(angle) * weight
+      sumY += Math.sin(angle) * weight
+      weightSum += weight
+    }
+  }
+
+  const variance = count > 0 ? m2 / count : 0
+  const stdDev = Math.sqrt(variance)
+  const luminanceContrast = Math.round((stdDev / 255) * 100)
+
+  if (weightSum === 0) {
+    return { luminanceContrast, colorContrast: 0 }
+  }
+
+  const vectorLength = Math.sqrt(sumX * sumX + sumY * sumY) / weightSum
+  const colorContrast = Math.round((1 - vectorLength) * 100)
+
+  return { luminanceContrast, colorContrast }
 }
 
 function getHueSpread(swatches: PaletteSwatch[]) {
@@ -1273,6 +1735,39 @@ function toHex(value: number) {
   return value.toString(16).padStart(2, '0')
 }
 
+function formatSigned(value: number) {
+  return value > 0 ? `+${value}` : `${value}`
+}
+
+function mapRange(
+  value: number,
+  inMin: number,
+  inMax: number,
+  outMin: number,
+  outMax: number
+) {
+  if (inMax === inMin) {
+    return outMin
+  }
+
+  const ratio = (value - inMin) / (inMax - inMin)
+
+  return outMin + ratio * (outMax - outMin)
+}
+
+function clampValue(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function hexToRgb(hex: string) {
+  const normalized = hex.replace('#', '')
+  const r = parseInt(normalized.slice(0, 2), 16)
+  const g = parseInt(normalized.slice(2, 4), 16)
+  const b = parseInt(normalized.slice(4, 6), 16)
+
+  return { r, g, b }
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1313,20 +1808,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1.2,
   },
-  primarySwatch: {
-    width: '100%',
-    height: 140,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: UI_COLORS.border,
-  },
-  primaryMeta: {
-    gap: 6,
-  },
-  primaryMetrics: {
-    flexDirection: 'row',
-    gap: 16,
-  },
   copiedText: {
     fontSize: 12,
     textTransform: 'uppercase',
@@ -1337,6 +1818,17 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
   },
+  paletteBar: {
+    flexDirection: 'row',
+    height: 36,
+    borderRadius: 999,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: UI_COLORS.border,
+  },
+  paletteSegment: {
+    height: '100%',
+  },
   metricsBlock: {
     padding: 16,
     borderRadius: 16,
@@ -1344,6 +1836,21 @@ const styles = StyleSheet.create({
     borderColor: UI_COLORS.border,
     backgroundColor: UI_COLORS.card,
     gap: 10,
+  },
+  gradientBlock: {
+    gap: 12,
+  },
+  gradientBar: {
+    flexDirection: 'row',
+    height: 18,
+    borderRadius: 999,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: UI_COLORS.border,
+    position: 'relative',
+  },
+  gradientOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   metricsLabelRow: {
     flexDirection: 'row',
@@ -1405,17 +1912,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 48,
     borderRadius: 12,
-  },
-  lightnessRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  lightnessSwatch: {
-    flex: 1,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: UI_COLORS.border,
   },
   imageRow: {
     borderRadius: 20,
